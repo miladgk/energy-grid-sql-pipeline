@@ -191,6 +191,26 @@ def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
     print("Downsampling 15-minute readings to hourly average (mean) ...")
     df_raw = df_raw.set_index("recorded_at")
     df_hourly = df_raw.groupby(["dataset_id", "metric", "country"]).resample("1h")["value"].mean().reset_index()
+
+    # --- Data quality: fill Fingrid source gaps ---
+    # NaN = hours where Fingrid had no 15-min readings; interpolate linearly (max 3 consecutive).
+    # Negatives = instrument noise near zero (e.g. DST correction artefacts); clamp to 0.
+    nan_before = int(df_hourly["value"].isna().sum())
+    if nan_before:
+        df_hourly["value"] = df_hourly.groupby("metric")["value"].transform(
+            lambda s: s.interpolate(method="linear", limit=3, limit_direction="both")
+        )
+        nan_after = int(df_hourly["value"].isna().sum())
+        print(f"  → Interpolated {nan_before} NaN gap(s) in Fingrid source data"
+              + (f"; {nan_after} gap(s) still unfilled (filled with 0)" if nan_after else "."))
+        if nan_after:
+            df_hourly["value"] = df_hourly["value"].fillna(0)
+
+    neg_count = int((df_hourly["value"] < 0).sum())
+    if neg_count:
+        print(f"  → Clamped {neg_count} negative value(s) to 0 (measurement noise near zero).")
+        df_hourly["value"] = df_hourly["value"].clip(lower=0)
+
     df_hourly["source"] = "fingrid"
     df_hourly = df_hourly[["dataset_id", "country", "recorded_at", "value", "metric", "source"]]
     return df_hourly
