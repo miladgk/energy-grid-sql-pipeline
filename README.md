@@ -232,6 +232,22 @@ uvicorn src.api:app --reload --port 8000
 
 Open `http://localhost:8000/docs` for the auto-generated Swagger UI.
 
+### 10 — Start and Provision Executive Dashboard (Metabase)
+
+Start the Metabase Docker container alongside PostgreSQL:
+
+```bash
+docker compose up -d metabase
+```
+
+Once running (`http://localhost:3000`), provision the database connection and native SQL charts automatically via the REST API:
+
+```bash
+python scripts/setup_metabase.py
+```
+
+> **Security Caveat**: Metabase runs locally inside Docker (`http://localhost:3000`) and connects securely to the PostgreSQL container via Docker networking (`energy_analytics_db:5432`). For privacy and safety, no public unauthenticated endpoint or external sharing link is exposed.
+
 ---
 
 ## SQL Techniques Demonstrated
@@ -286,6 +302,41 @@ To validate the synthetic data generator against reality, monthly wind productio
 
 ---
 
+## Executive Business Intelligence Dashboard (Metabase)
+
+To make the SQL analytics accessible and actionable for executive decision-makers and data analysts, we built an interactive Metabase dashboard over our PostgreSQL warehouse.
+
+```
++---------------------------------------------------------------------------------------------+
+|                            ENERGY ANALYTICS EXECUTIVE DASHBOARD                             |
++------------------------------------------------------------------------+--------------------+
+|  [Bar Chart] Top 10 Facilities by Efficiency                           |  [Line Chart]      |
+|  Visualises ranking from 05_facility_ranking.sql                       |  Monthly Anomaly   |
+|  Identifies highest-performing solar & wind plants                     |  Rate Trend (04)   |
++------------------------------------------------------------------------+--------------------+
+|  [Line Chart] Rolling 24h Average Power by Type                        |  [Line Chart]      |
+|  Demonstrates window functions (AVG OVER 23 PRECEDING) from 03         |  Real vs Synthetic |
+|  Compares solar vs wind diurnal generation curves                      |  Wind Patterns (08)|
++------------------------------------------------------------------------+--------------------+
+```
+
+### Full Dashboard Overview
+![Metabase Executive Dashboard](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/metabase_dashboard.png)
+
+### 1. Top 10 Facilities by Efficiency
+![Top 10 Facilities by Efficiency](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/facility_ranking.png)
+
+### 2. Monthly Anomaly Rate Trend
+![Monthly Anomaly Rate Trend](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/monthly_anomaly_rate.png)
+
+### 3. Rolling 24h Average Power by Facility Type
+![Rolling 24h Average Power by Facility Type](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/rolling_24h_average.png)
+
+### 4. Real vs. Synthetic Wind Pattern Comparison
+![Real vs. Synthetic Wind Pattern Comparison](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/real_vs_synthetic_comparison.png)
+
+---
+
 ## Recommended Commit Sequence
 
 ```
@@ -302,16 +353,3 @@ git commit -m "Add run_report.py pipeline, FastAPI endpoint, and complete README
 ```
 
 ---
-
-## What This Proves to a Hiring Manager
-
-| JD Requirement | How It Is Covered |
-|---|---|
-| ETL pipeline experience | `ingest.py` with chunked loading, rollback on failure, idempotent inserts |
-| Intermediate / advanced SQL | CTEs, window functions, ranking, time-series LAG, z-score anomaly detection |
-| Relational database schema design | Normalised 3-table schema with FK constraints, named columns (no reserved-word clashes) |
-| Data quality and validation | Quality-check SQL + 5-assertion pytest suite |
-| Python for automation | `run_report.py` automated reporting pipeline |
-| Docker / containerisation | PostgreSQL 15 via Docker Compose — one-command environment setup |
-| API / data product mindset | FastAPI endpoint serving anomaly and ranking data as JSON |
-| Git with meaningful commit history | 10-step commit sequence above |
