@@ -264,6 +264,7 @@ python scripts/setup_metabase.py
 | **`DATE_TRUNC` + `TO_CHAR`** | All analysis files — period aggregation and formatted output |
 | **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 13.4ms to 0.36ms (97.3% reduction). See [index_benchmark.md](file:///mnt/d/Projects/sql_docker/energy-analytics-sql/benchmarks/index_benchmark.md) for execution plans. |
 | **`ON CONFLICT DO NOTHING`** | `ingest.py` — idempotent ingestion; safe to re-run the pipeline |
+| **LATERAL joins** | `09_top_readings_per_sensor.sql` — per-sensor top-N without a window function subquery |
 
 ---
 
