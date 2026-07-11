@@ -22,23 +22,32 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from db_connection import get_connection
 
-SCHEMA_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "sql", "schema", "01_create_tables.sql"
+import glob
+
+SCHEMA_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "sql", "schema"
 )
 
 
 def setup_schema(conn) -> None:
-    """Execute 01_create_tables.sql against *conn*."""
-    with open(SCHEMA_PATH, "r") as fh:
-        sql = fh.read()
+    """Execute all .sql files in sql/schema/ in sorted alphabetical order against *conn*."""
+    sql_files = sorted(glob.glob(os.path.join(SCHEMA_DIR, "*.sql")))
+    if not sql_files:
+        print("No schema SQL files found.")
+        return
 
     with conn.cursor() as cur:
-        cur.execute(sql)
+        for filepath in sql_files:
+            filename = os.path.basename(filepath)
+            print(f"Applying schema file: {filename}")
+            with open(filepath, "r") as fh:
+                sql = fh.read()
+            cur.execute(sql)
     conn.commit()
 
 
 def main():
-    print(f"Reading schema from: {os.path.abspath(SCHEMA_PATH)}")
+    print(f"Scanning schema directory: {os.path.abspath(SCHEMA_DIR)}")
 
     try:
         conn = get_connection()
@@ -48,7 +57,7 @@ def main():
 
     try:
         setup_schema(conn)
-        print("✓ Schema created (or already exists — safe to re-run)")
+        print("✓ All schema scripts applied successfully (or already exists)")
     except Exception as exc:
         conn.rollback()
         print(f"✗ Schema setup failed: {exc}")
