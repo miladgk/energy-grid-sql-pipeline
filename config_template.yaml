@@ -7,3 +7,6 @@ database:
   dbname: energy_analytics
   user: ""
   password: ""
+
+fingrid_api_key: ""
+
