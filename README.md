@@ -103,12 +103,19 @@ energy-analytics-sql/
 ### 1 — Clone and create the Conda environment
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/energy-analytics-sql.git
-cd energy-analytics-sql
+git clone https://github.com/miladgk/energy-grid-sql-pipeline.git
+cd energy-grid-sql-pipeline
 
 conda env create -f environment.yaml
 conda activate energy-analytics
 ```
+
+> [!NOTE]
+> **Python-only setup:** If you are not using Conda, you can create a virtual environment and install the pinned dependencies using pip:
+> ```bash
+> pip install -r requirements.txt
+> ```
+
 
 ### 2 — Start PostgreSQL with Docker Compose
 
