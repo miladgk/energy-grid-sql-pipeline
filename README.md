@@ -81,7 +81,8 @@ energy-analytics-sql/
 │       ├── 03_rolling_averages.sql
 │       ├── 04_anomaly_detection.sql
 │       ├── 05_facility_ranking.sql
-│       └── 06_monthly_report.sql
+│       ├── 06_monthly_report.sql
+│       └── 08_real_vs_synthetic_comparison.sql
 │
 ├── src/
 │   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
@@ -276,6 +277,12 @@ reading_id  sensor_id  recorded_at               value      z_score  facility_na
 2984510     23         2023-05-18T14:20:00+00    904.0000     14.92  WindFarm_South_01      power_output  true
 5417623     38         2023-09-07T06:55:00+00   -64.5000     13.54  SolarPlant_Central_12  temperature   true
 ```
+
+---
+
+## Real vs. Synthetic Wind Pattern Validation
+
+To validate the synthetic data generator against reality, monthly wind production patterns were compared against real Fingrid grid data for Finland (2023). The result: a Pearson correlation of **-0.42** between real and synthetic monthly capacity factors. Real Nordic wind production shows strong seasonality (100% in January, dropping to 33% in July), while the synthetic generator produces a nearly flat ~99% capacity factor year-round. This confirms the synthetic generator does not model seasonal wind variability — a known limitation, surfaced deliberately by this comparison rather than left unexamined. See `outputs/08_real_vs_synthetic_comparison.csv` for the full monthly breakdown.
 
 ---
 
