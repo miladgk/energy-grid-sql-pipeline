@@ -1,0 +1,21 @@
+services:
+  postgres_db:
+    image: postgres:15
+    container_name: energy_analytics_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: energy_analytics
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema/01_create_tables.sql:/docker-entrypoint-initdb.d/01_create_tables.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d energy_analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

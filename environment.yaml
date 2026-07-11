@@ -1,0 +1,16 @@
+name: energy-analytics
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pandas=2.1
+  - numpy=1.26
+  - psycopg2=2.9
+  - sqlalchemy=2.0
+  - pyyaml=6.0
+  - pytest=7.4
+  - pip
+  - pip:
+      - fastapi==0.110.0
+      - uvicorn[standard]==0.27.0
