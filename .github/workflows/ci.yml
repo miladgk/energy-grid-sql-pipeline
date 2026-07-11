@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      ROWS_EXPECTED: "50000"
+      DAYS_EXPECTED: "3"
 
     services:
       postgres:
@@ -58,7 +61,7 @@ jobs:
 
       - name: Generate Scaled-Down CI Data
         run: |
-          python src/generate_data.py --rows 50000
+          python src/generate_data.py --rows ${ROWS_EXPECTED}
 
       - name: Ingest Data into PostgreSQL
         run: |
@@ -69,7 +72,5 @@ jobs:
           python src/run_quality_checks.py
 
       - name: Run Pytest Suite
-        env:
-          CI: "true"
         run: |
           pytest tests/ -v

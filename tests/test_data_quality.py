@@ -107,26 +107,24 @@ def test_anomaly_rate_within_expected_range(conn):
 
 
 # ──────────────────────────────────────────────────────────────
-# Check 4: Data covers all 365 days of 2023
+# Check 4: Data covers expected days (default 365 days of 2023)
 # ──────────────────────────────────────────────────────────────
 
 def test_full_year_coverage(conn):
     """
-    Readings should span every day of 2023.  A gap indicates that a
-    portion of the data file was not ingested.
+    Readings should span the expected number of days (default 365 days of 2023).
+    A gap indicates that a portion of the data file was not ingested.
     """
     import os
+    expected_days = int(os.getenv("DAYS_EXPECTED", 365))
     sql = """
         SELECT COUNT(DISTINCT DATE_TRUNC('day', recorded_at))
         FROM readings
     """
     days_with_data = _scalar(conn, sql)
-    if os.getenv("CI") == "true":
-        assert days_with_data > 0, "Expected at least 1 day of data in CI"
-    else:
-        assert days_with_data == 365, (
-            f"Expected 365 days of data, found {days_with_data}"
-        )
+    assert days_with_data >= expected_days, (
+        f"Expected at least {expected_days} days of data, found {days_with_data}"
+    )
 
 
 # ──────────────────────────────────────────────────────────────
@@ -135,20 +133,17 @@ def test_full_year_coverage(conn):
 
 def test_reading_volume_is_realistic(conn):
     """
-    60 sensors × 365 days × 288 intervals/day = 6,307,200 readings.
-    Allow ±5 % tolerance for anomaly injection edge cases.
+    60 sensors × 365 days × 288 intervals/day = 6,307,200 readings by default.
+    Expected row count and tolerance can be configured via environment variables
+    to support scaled-down test datasets without branching on environment names.
     """
     import os
-    if os.getenv("CI") == "true":
-        expected  = 50_000
-        tolerance = 0.10  # 10% tolerance for scaled down CI
-    else:
-        expected  = 60 * 365 * 288   # 6_307_200
-        tolerance = 0.05
+    expected = int(os.getenv("ROWS_EXPECTED", 60 * 365 * 288))
+    tolerance = float(os.getenv("ROWS_TOLERANCE", 0.10 if expected < 100_000 else 0.05))
 
-    actual    = _scalar(conn, "SELECT COUNT(*) FROM readings")
+    actual = _scalar(conn, "SELECT COUNT(*) FROM readings")
 
     assert abs(actual - expected) / expected <= tolerance, (
-        f"Row count {actual:,} deviates > tolerance from expected {expected:,}"
+        f"Row count {actual:,} deviates > tolerance ({tolerance:.0%}) from expected {expected:,}"
     )
 

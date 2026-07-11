@@ -31,24 +31,23 @@ CHECKS_PATH = os.path.join(
     os.path.dirname(__file__), "..", "sql", "etl", "02_data_quality_checks.sql"
 )
 
+DAYS_EXPECTED = int(os.getenv("DAYS_EXPECTED", 365))
+
 # Human-readable labels for each check block, in order
 CHECK_LABELS = [
     "Check 1 — Sensors with no readings (expect 0 rows)",
     "Check 2 — Readings with NULL values  (expect count = 0)",
     "Check 3 — Anomaly rate per facility  (expect ~2%)",
-    "Check 4 — Timestamp coverage         (expect 365 days)",
+    f"Check 4 — Timestamp coverage         (expect >= {DAYS_EXPECTED} days)",
 ]
 
 # For each check, define the failure condition as a callable
 # that receives the resulting DataFrame and returns True if the check FAILS.
-import os
-is_ci = os.getenv("CI") == "true"
-
 FAILURE_CONDITIONS = [
     lambda df: len(df) > 0,                                        # Check 1: any orphan sensors
     lambda df: int(df.iloc[0, 0]) > 0,                            # Check 2: any NULLs
     lambda df: False,                                              # Check 3: informational only
-    lambda df: int(df["days_with_data"].iloc[0]) < (1 if is_ci else 365),           # Check 4: missing days
+    lambda df: int(df["days_with_data"].iloc[0]) < DAYS_EXPECTED,  # Check 4: missing days
 ]
 
 
