@@ -236,7 +236,7 @@ Open `http://localhost:8000/docs` for the auto-generated Swagger UI.
 | **`FILTER` aggregation** | `02_data_quality_checks.sql`, `06_monthly_report.sql` — conditional counts without subqueries |
 | **`NULLIF` for safe division** | `05_facility_ranking.sql`, `06_monthly_report.sql` — prevents division-by-zero |
 | **`DATE_TRUNC` + `TO_CHAR`** | All analysis files — period aggregation and formatted output |
-| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts time-range query cost by ~90 % |
+| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 13.4ms to 0.36ms (97.3% reduction). See [index_benchmark.md](file:///mnt/d/Projects/sql_docker/energy-analytics-sql/benchmarks/index_benchmark.md) for execution plans. |
 | **`ON CONFLICT DO NOTHING`** | `ingest.py` — idempotent ingestion; safe to re-run the pipeline |
 
 ---

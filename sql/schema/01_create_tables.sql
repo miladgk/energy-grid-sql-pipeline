@@ -37,6 +37,5 @@ CREATE TABLE IF NOT EXISTS readings (
 
 -- Composite index covers the most common query pattern:
 --   WHERE sensor_id = ? AND recorded_at BETWEEN ? AND ?
-CREATE INDEX IF NOT EXISTS idx_readings_recorded_at ON readings(recorded_at);
-CREATE INDEX IF NOT EXISTS idx_readings_sensor      ON readings(sensor_id);
 CREATE INDEX IF NOT EXISTS idx_readings_sensor_time ON readings(sensor_id, recorded_at);
+
