@@ -119,11 +119,12 @@ def get_mock_grid_data() -> pd.DataFrame:
 def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time: str) -> list:
     """Fetch data for a specific dataset ID and time chunk with retry logic and rate limit compliance."""
     params = {
-        "start_time": start_time,
-        "end_time": end_time
+        "startTime": start_time,
+        "endTime": end_time,
+        "pageSize": 20000
     }
     query_string = urllib.parse.urlencode(params)
-    url = f"{API_BASE_URL}/{dataset_id}/events/json?{query_string}"
+    url = f"https://data.fingrid.fi/api/datasets/{dataset_id}/data?{query_string}"
     
     req = urllib.request.Request(url)
     req.add_header("Accept", "application/json")
@@ -137,7 +138,8 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
         try:
             with urllib.request.urlopen(req, timeout=30) as response:
                 if response.status == 200:
-                    return json.loads(response.read().decode("utf-8"))
+                    data = json.loads(response.read().decode("utf-8"))
+                    return data.get("data", [])
                 else:
                     print(f"  Warning: Received status code {response.status}. Retrying...")
         except urllib.error.HTTPError as e:
@@ -183,7 +185,7 @@ def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
             all_chunks.append(df_chunk)
             
     df_raw = pd.concat(all_chunks, ignore_index=True)
-    df_raw["recorded_at"] = pd.to_datetime(df_raw["start_time"])
+    df_raw["recorded_at"] = pd.to_datetime(df_raw["startTime"])
     df_raw["value"] = pd.to_numeric(df_raw["value"])
     
     print("Downsampling 15-minute readings to hourly average (mean) ...")
