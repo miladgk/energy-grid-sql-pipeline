@@ -1,5 +1,7 @@
 # Energy Facility Performance & Anomaly Analytics Platform
 
+[![CI Pipeline](https://github.com/miladgk/energy-grid-sql-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/miladgk/energy-grid-sql-pipeline/actions/workflows/ci.yml)
+
 A local data engineering project that ingests, transforms, and analyses
 operational time-series data from a fictional network of 20 industrial energy
 facilities (wind farms, solar plants, substations) across Scandinavia.

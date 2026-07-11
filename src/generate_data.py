@@ -98,20 +98,30 @@ def generate_readings(
     sensors: pd.DataFrame,
     facilities: pd.DataFrame,
     interval_minutes: int = INTERVAL_MINS,
+    rows_limit: int = None,
 ) -> pd.DataFrame:
     """
     Generate time-series readings at *interval_minutes* resolution
     for every sensor across the full calendar year 2023.
+    If rows_limit is specified, scales down the number of timestamps to fit.
 
     Returns a DataFrame with columns:
         reading_id, sensor_id, recorded_at, value, is_anomaly
     """
-    timestamps = pd.date_range(
-        start="2023-01-01 00:00",
-        end  ="2023-12-31 23:55",
-        freq =f"{interval_minutes}min",
-    )
-    n_timestamps = len(timestamps)
+    if rows_limit is not None:
+        n_timestamps = max(1, rows_limit // len(sensors))
+        timestamps = pd.date_range(
+            start="2023-01-01 00:00",
+            periods=n_timestamps,
+            freq=f"{interval_minutes}min",
+        )
+    else:
+        timestamps = pd.date_range(
+            start="2023-01-01 00:00",
+            end  ="2023-12-31 23:55",
+            freq =f"{interval_minutes}min",
+        )
+        n_timestamps = len(timestamps)
 
     # Pre-build the facility lookup: facility_id → capacity_mw
     cap_map = facilities.set_index("facility_id")["capacity_mw"].to_dict()
@@ -159,6 +169,13 @@ def generate_readings(
 # ──────────────────────────────────────────────────────────────
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate synthetic operational data.")
+    parser.add_argument("--rows", type=int, default=None, help="Limit total row count (e.g. 50000 for CI)")
+    parser.add_argument("--days", type=int, default=365, help="Number of days of data to generate (if rows not set)")
+    parser.add_argument("--interval", type=int, default=INTERVAL_MINS, help="Interval in minutes (default: 5)")
+    args = parser.parse_args()
+
     print("Generating facilities …")
     facilities = generate_facilities(20)
     fac_path   = os.path.join(RAW_DIR, "facilities.csv")
@@ -172,7 +189,11 @@ def main():
     print(f"  ✓ {len(sensors):,} rows → {sen_path}")
 
     print("Generating readings (this may take 30–60 seconds) …")
-    readings  = generate_readings(sensors, facilities)
+    rows_limit = args.rows
+    if rows_limit is None and args.days != 365:
+        rows_limit = len(sensors) * args.days * (1440 // args.interval)
+
+    readings  = generate_readings(sensors, facilities, interval_minutes=args.interval, rows_limit=rows_limit)
     red_path  = os.path.join(RAW_DIR, "readings.csv")
     readings.to_csv(red_path, index=False)
     print(f"  ✓ {len(readings):,} rows → {red_path}")
@@ -187,3 +208,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

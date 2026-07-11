@@ -41,12 +41,16 @@ CHECK_LABELS = [
 
 # For each check, define the failure condition as a callable
 # that receives the resulting DataFrame and returns True if the check FAILS.
+import os
+is_ci = os.getenv("CI") == "true"
+
 FAILURE_CONDITIONS = [
     lambda df: len(df) > 0,                                        # Check 1: any orphan sensors
     lambda df: int(df.iloc[0, 0]) > 0,                            # Check 2: any NULLs
     lambda df: False,                                              # Check 3: informational only
-    lambda df: int(df["days_with_data"].iloc[0]) < 365,           # Check 4: missing days
+    lambda df: int(df["days_with_data"].iloc[0]) < (1 if is_ci else 365),           # Check 4: missing days
 ]
+
 
 
 def _split_sql_file(path: str) -> list[str]:
