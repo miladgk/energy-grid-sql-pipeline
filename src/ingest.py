@@ -1,0 +1,185 @@
+"""
+ingest.py
+~~~~~~~~~
+Loads the three raw CSV files into PostgreSQL.
+
+Key engineering decisions
+-------------------------
+* readings are loaded in chunks of 5,000 rows via pandas chunksize so
+  memory usage stays flat regardless of file size (~6 M rows → ~2 GB CSV).
+* executemany is used for bulk inserts; psycopg2 batches these into a
+  single round-trip per chunk.
+* ON CONFLICT DO NOTHING makes every function idempotent — safe to re-run
+  without duplicating data.
+* Each function wraps its work in an explicit transaction with rollback on
+  failure, so a partial load never leaves the database in a dirty state.
+"""
+
+import os
+import pandas as pd
+import psycopg2
+from psycopg2.extensions import connection as PgConnection
+
+CHUNK_SIZE = 5_000
+
+
+# ──────────────────────────────────────────────────────────────
+# facilities
+# ──────────────────────────────────────────────────────────────
+
+_INSERT_FACILITY = """
+    INSERT INTO facilities
+        (facility_id, facility_name, facility_type, country,
+         capacity_mw, commissioned_year)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (facility_id) DO NOTHING
+"""
+
+def ingest_facilities(conn: PgConnection, filepath: str) -> None:
+    """Load facilities.csv into the facilities table."""
+    df = pd.read_csv(filepath)
+    rows = [
+        (
+            int(r.facility_id), r.facility_name, r.facility_type,
+            r.country, float(r.capacity_mw), int(r.commissioned_year),
+        )
+        for r in df.itertuples(index=False)
+    ]
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(_INSERT_FACILITY, rows)
+        conn.commit()
+        print(f"  ✓ facilities: {len(rows):,} rows inserted (or skipped if already present)")
+    except Exception as exc:
+        conn.rollback()
+        raise RuntimeError(f"ingest_facilities failed: {exc}") from exc
+
+
+# ──────────────────────────────────────────────────────────────
+# sensors
+# ──────────────────────────────────────────────────────────────
+
+_INSERT_SENSOR = """
+    INSERT INTO sensors (sensor_id, facility_id, sensor_type, unit)
+    VALUES (%s, %s, %s, %s)
+    ON CONFLICT (sensor_id) DO NOTHING
+"""
+
+def ingest_sensors(conn: PgConnection, filepath: str) -> None:
+    """Load sensors.csv into the sensors table."""
+    df = pd.read_csv(filepath)
+    rows = [
+        (int(r.sensor_id), int(r.facility_id), r.sensor_type, r.unit)
+        for r in df.itertuples(index=False)
+    ]
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(_INSERT_SENSOR, rows)
+        conn.commit()
+        print(f"  ✓ sensors   : {len(rows):,} rows inserted (or skipped if already present)")
+    except Exception as exc:
+        conn.rollback()
+        raise RuntimeError(f"ingest_sensors failed: {exc}") from exc
+
+
+# ──────────────────────────────────────────────────────────────
+# readings  (chunked — the large table)
+# ──────────────────────────────────────────────────────────────
+
+_INSERT_READING = """
+    INSERT INTO readings (reading_id, sensor_id, recorded_at, value, is_anomaly)
+    VALUES (%s, %s, %s, %s, %s)
+    ON CONFLICT (reading_id) DO NOTHING
+"""
+
+def ingest_readings(
+    conn: PgConnection,
+    filepath: str,
+    chunk_size: int = CHUNK_SIZE,
+) -> None:
+    """
+    Load readings.csv into the readings table in chunks.
+
+    Chunking is essential for the ~6 M row file: loading it entirely
+    into memory would require ~1.5 GB of RAM and stall the ingest.
+    With chunk_size=5000 memory usage is constant at ~5 MB per batch.
+    """
+    total_rows = 0
+    chunk_num  = 0
+
+    try:
+        reader = pd.read_csv(
+            filepath,
+            chunksize=chunk_size,
+            parse_dates=["recorded_at"],
+        )
+        for chunk in reader:
+            chunk_num += 1
+            rows = [
+                (
+                    int(r.reading_id),
+                    int(r.sensor_id),
+                    r.recorded_at.isoformat(),
+                    float(r.value),
+                    bool(r.is_anomaly),
+                )
+                for r in chunk.itertuples(index=False)
+            ]
+            with conn.cursor() as cur:
+                cur.executemany(_INSERT_READING, rows)
+            conn.commit()
+            total_rows += len(rows)
+
+            # Progress indicator every 50 chunks (~250 k rows)
+            if chunk_num % 50 == 0:
+                print(f"    … {total_rows:>10,} rows loaded so far")
+
+    except Exception as exc:
+        conn.rollback()
+        raise RuntimeError(f"ingest_readings failed at chunk {chunk_num}: {exc}") from exc
+
+    print(f"  ✓ readings  : {total_rows:,} rows inserted across {chunk_num} chunks")
+
+
+# ──────────────────────────────────────────────────────────────
+# Entry point  (run all three in dependency order)
+# ──────────────────────────────────────────────────────────────
+
+def main():
+    import sys
+    sys.path.insert(0, os.path.dirname(__file__))
+    from db_connection import get_connection
+    from run_quality_checks import run_quality_checks
+
+    raw_dir = os.path.join(os.path.dirname(__file__), "..", "data", "raw")
+
+    print("Connecting to PostgreSQL …")
+    conn = get_connection()
+    print("  ✓ Connected\n")
+
+    print("Ingesting facilities …")
+    ingest_facilities(conn, os.path.join(raw_dir, "facilities.csv"))
+
+    print("Ingesting sensors …")
+    ingest_sensors(conn, os.path.join(raw_dir, "sensors.csv"))
+
+    print("Ingesting readings (large file — may take several minutes) …")
+    ingest_readings(conn, os.path.join(raw_dir, "readings.csv"))
+
+    # ── Post-ingestion quality gate ──────────────────────────────
+    # Runs 02_data_quality_checks.sql immediately after loading so
+    # any data integrity problems are caught before analysis begins.
+    print("\nRunning post-ingestion data quality checks …")
+    passed = run_quality_checks(conn)
+    
+    conn.close()
+
+    if not passed:
+        print("⚠ Ingestion completed but quality checks flagged problems.")
+        sys.exit(1)
+        
+    print("\nIngestion complete — all quality checks passed.")
+
+
+if __name__ == "__main__":
+    main()
