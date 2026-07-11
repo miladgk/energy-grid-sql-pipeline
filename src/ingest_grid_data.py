@@ -2,7 +2,9 @@
 ingest_grid_data.py
 ~~~~~~~~~~~~~~~~~~~
 Loads grid_data.csv into PostgreSQL.
-Uses chunking, transactions with rollback, and ON CONFLICT DO NOTHING for idempotence.
+Uses chunking, transactions with rollback, and ON CONFLICT DO UPDATE so that if
+real Fingrid data replaces earlier mock data (or vice versa), the values and
+source column are properly updated.
 """
 
 import os
@@ -14,9 +16,12 @@ from psycopg2.extensions import connection as PgConnection
 CHUNK_SIZE = 5_000
 
 _INSERT_GRID_DATA = """
-    INSERT INTO grid_data (dataset_id, country, recorded_at, value, metric)
-    VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (dataset_id, recorded_at) DO NOTHING
+    INSERT INTO grid_data (dataset_id, country, recorded_at, value, metric, source)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (dataset_id, recorded_at) DO UPDATE SET
+        value = EXCLUDED.value,
+        metric = EXCLUDED.metric,
+        source = EXCLUDED.source
 """
 
 def ingest_grid_data(conn: PgConnection, filepath: str, chunk_size: int = CHUNK_SIZE) -> None:
@@ -32,6 +37,9 @@ def ingest_grid_data(conn: PgConnection, filepath: str, chunk_size: int = CHUNK_
         )
         for chunk in reader:
             chunk_num += 1
+            if "source" not in chunk.columns:
+                chunk["source"] = "fingrid"
+                
             rows = [
                 (
                     int(r.dataset_id),
@@ -39,6 +47,7 @@ def ingest_grid_data(conn: PgConnection, filepath: str, chunk_size: int = CHUNK_
                     r.recorded_at.isoformat(),
                     float(r.value),
                     r.metric,
+                    str(r.source),
                 )
                 for r in chunk.itertuples(index=False)
             ]
@@ -54,7 +63,7 @@ def ingest_grid_data(conn: PgConnection, filepath: str, chunk_size: int = CHUNK_
         conn.rollback()
         raise RuntimeError(f"ingest_grid_data failed at chunk {chunk_num}: {exc}") from exc
 
-    print(f"  ✓ grid_data : {total_rows:,} rows inserted across {chunk_num} chunks (or skipped if already present)")
+    print(f"  ✓ grid_data : {total_rows:,} rows inserted/updated across {chunk_num} chunks")
 
 
 def main():

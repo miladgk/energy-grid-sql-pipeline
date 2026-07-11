@@ -5,9 +5,13 @@ Pulls historical hourly electricity consumption and wind power production
 for Finland from the Fingrid Open Data API (data.fingrid.fi) for the full
 year of 2023.
 
-If no API key is configured in config.yaml, the script falls back to generating
-realistic mock hourly data for Finland (2023) so that the pipeline remains
-fully executable and reproducible in environments without API access.
+By default, this script requires a valid 'fingrid_api_key' in config.yaml and
+fails loudly if none is present or if API fetching fails.
+
+To allow generating synthetic mock data for offline testing or CI, the caller
+must explicitly provide the '--allow-mock' CLI flag. Every row is stamped
+with a 'source' column ('fingrid' vs 'mock') so real vs fake data is
+unambiguously queryable in the database.
 
 API details:
   - Base URL: https://api.fingrid.fi/v1/variable/{variable_id}/events/json
@@ -18,7 +22,9 @@ API details:
 """
 
 import os
+import sys
 import time
+import argparse
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -53,54 +59,39 @@ def load_api_key() -> str:
 def get_mock_grid_data() -> pd.DataFrame:
     """
     Generate high-quality, realistic mock grid data for Finland for the full year of 2023.
-    This acts as a fallback if the Fingrid API key is missing or invalid.
+    Stamps every row with source='mock'.
     """
-    print("Generating realistic mock grid data for Finland (2023) ...")
+    print("⚠ WARNING: Using explicit --allow-mock flag. Generating synthetic MOCK data with source='mock'...")
     
-    # 8760 hours in 2023
     timestamps = pd.date_range(
         start="2023-01-01 00:00:00+00:00",
         end="2023-12-31 23:00:00+00:00",
         freq="1h"
     )
     n_hours = len(timestamps)
-    
-    # Seed for reproducibility
     rng = np.random.default_rng(42)
     
-    # Hour of day (0-23), Day of year (0-364)
     hour = timestamps.hour.values
     day_of_year = timestamps.dayofyear.values
     
-    # 1. Simulate Consumption (ID 124)
-    # Seasonal base: peaks in winter (Jan/Dec) around 11,000 MW, lows in summer (July) around 7,000 MW
     seasonal_factor = 9000 + 2000 * np.cos(2 * np.pi * (day_of_year - 15) / 365)
-    # Diurnal cycle: peak during morning/evening, lower at night (amplitude ~1500 MW)
     diurnal_factor = 1000 * np.sin(2 * np.pi * (hour - 6) / 24) - 500 * np.cos(4 * np.pi * (hour - 18) / 24)
-    # Weekend effect: lower consumption on Saturdays (index 5) and Sundays (index 6)
     weekday = timestamps.weekday.values
     weekend_factor = np.where(weekday >= 5, 0.90, 1.0)
     
     consumption_noise = rng.normal(0, 300, size=n_hours)
     consumption = ((seasonal_factor + diurnal_factor) * weekend_factor + consumption_noise).round(4)
-    # Clamp to realistic bounds
     consumption = np.clip(consumption, 5000, 15000)
 
-    # 2. Simulate Wind Production (ID 75)
-    # Wind production is highly variable and correlates loosely with weather cycles
-    # We use a mean-reverting random walk with a seasonal baseline
     wind_base = 1800 + 400 * np.cos(2 * np.pi * (day_of_year - 45) / 365)
     wind_noise = rng.normal(0, 450, size=n_hours)
     
-    # Generate auto-correlated wind production
     wind = np.zeros(n_hours)
     wind[0] = wind_base[0] + wind_noise[0]
     for t in range(1, n_hours):
-        # Mean reverting random walk: 92% weight on previous step, 8% pull to baseline, plus noise
         wind[t] = 0.92 * wind[t-1] + 0.08 * wind_base[t] + wind_noise[t]
         
     wind = wind.round(4)
-    # Clamp wind production between 100 MW and 5500 MW (max capacity)
     wind = np.clip(wind, 100, 5500)
     
     df_cons = pd.DataFrame({
@@ -108,7 +99,8 @@ def get_mock_grid_data() -> pd.DataFrame:
         "country": "FI",
         "recorded_at": timestamps,
         "value": consumption,
-        "metric": "consumption"
+        "metric": "consumption",
+        "source": "mock"
     })
     
     df_wind = pd.DataFrame({
@@ -116,7 +108,8 @@ def get_mock_grid_data() -> pd.DataFrame:
         "country": "FI",
         "recorded_at": timestamps,
         "value": wind,
-        "metric": "wind_production"
+        "metric": "wind_production",
+        "source": "mock"
     })
     
     df_grid = pd.concat([df_cons, df_wind], ignore_index=True)
@@ -140,7 +133,6 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
     backoff = 2.0
     
     for attempt in range(max_retries):
-        # Fingrid rate limit: max 1 request per 2 seconds
         time.sleep(2.0)
         try:
             with urllib.request.urlopen(req, timeout=30) as response:
@@ -164,17 +156,13 @@ def fetch_dataset_chunk(dataset_id: int, api_key: str, start_time: str, end_time
             time.sleep(backoff)
             backoff *= 2.0
             
-    print(f"  Error: Failed to fetch dataset {dataset_id} for range {start_time} to {end_time} after {max_retries} attempts.")
-    return []
+    raise RuntimeError(f"Failed to fetch dataset {dataset_id} for range {start_time} to {end_time} after {max_retries} attempts.")
 
 
 def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
     """Fetch full year 2023 grid data by dividing it into monthly chunks."""
     print("Connecting to Fingrid Open Data API ...")
-    
-    # 2023 monthly boundaries
     months = pd.date_range(start="2023-01-01", end="2024-01-01", freq="MS")
-    
     all_chunks = []
     
     for dataset_id, metric in DATASETS.items():
@@ -185,10 +173,8 @@ def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
             
             print(f"  -> Pulling chunk: {months[i].strftime('%B %Y')} ...")
             chunk_data = fetch_dataset_chunk(dataset_id, api_key, start_str, end_str)
-            
             if not chunk_data:
-                # If we encounter an authentication error, raise it immediately to trigger fallback
-                raise RuntimeError("API fetch returned empty data or auth failed.")
+                raise RuntimeError(f"API returned empty data for {metric} in {months[i].strftime('%B %Y')}.")
                 
             df_chunk = pd.DataFrame(chunk_data)
             df_chunk["dataset_id"] = dataset_id
@@ -197,40 +183,44 @@ def fetch_fingrid_data(api_key: str) -> pd.DataFrame:
             all_chunks.append(df_chunk)
             
     df_raw = pd.concat(all_chunks, ignore_index=True)
-    
-    # Rename columns and parse timestamps
     df_raw["recorded_at"] = pd.to_datetime(df_raw["start_time"])
     df_raw["value"] = pd.to_numeric(df_raw["value"])
     
-    # Downsample to consistent hourly resolution
     print("Downsampling 15-minute readings to hourly average (mean) ...")
     df_raw = df_raw.set_index("recorded_at")
-    
-    # Group by dataset_id and resample to 1-hour intervals
     df_hourly = df_raw.groupby(["dataset_id", "metric", "country"]).resample("1h")["value"].mean().reset_index()
-    
-    # Clean up column ordering
-    df_hourly = df_hourly[["dataset_id", "country", "recorded_at", "value", "metric"]]
+    df_hourly["source"] = "fingrid"
+    df_hourly = df_hourly[["dataset_id", "country", "recorded_at", "value", "metric", "source"]]
     return df_hourly
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Fetch Fingrid hourly data or generate mock fallback.")
+    parser.add_argument("--allow-mock", action="store_true", help="Allow generating synthetic mock data if API key is missing or fails")
+    args = parser.parse_args()
+
     api_key = load_api_key()
     
-    # Check if api_key is configured/valid placeholder
     if not api_key or api_key == "YOUR_ACTUAL_API_KEY":
-        print("Notice: No valid 'fingrid_api_key' configured in config.yaml.")
-        df_grid = get_mock_grid_data()
+        if not args.allow_mock:
+            print("✗ ERROR: No valid 'fingrid_api_key' configured in config.yaml. Real Fingrid API data cannot be fetched.")
+            print("If you wish to generate synthetic mock data for offline testing or CI, you must pass the explicit --allow-mock flag.")
+            sys.exit(1)
+        else:
+            df_grid = get_mock_grid_data()
     else:
         try:
             df_grid = fetch_fingrid_data(api_key)
-            print("✓ Successfully fetched actual data from Fingrid API.")
+            print("✓ Successfully fetched actual data from Fingrid API (source='fingrid').")
         except Exception as exc:
-            print(f"Fingrid API request failed: {exc}")
-            print("Falling back to generating realistic mock grid data...")
-            df_grid = get_mock_grid_data()
+            print(f"✗ ERROR: Fingrid API request failed: {exc}")
+            if not args.allow_mock:
+                print("Failing loudly because --allow-mock flag was not passed.")
+                sys.exit(1)
+            else:
+                print("Falling back to generating synthetic mock grid data (source='mock') due to --allow-mock flag...")
+                df_grid = get_mock_grid_data()
             
-    # Save to CSV
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     df_grid.to_csv(OUTPUT_PATH, index=False)
     print(f"✓ Wrote {len(df_grid):,} grid data rows to: {os.path.abspath(OUTPUT_PATH)}")
