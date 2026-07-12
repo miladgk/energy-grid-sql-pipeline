@@ -99,16 +99,23 @@ def generate_readings(
     facilities: pd.DataFrame,
     interval_minutes: int = INTERVAL_MINS,
     rows_limit: int = None,
+    target_date: str = None
 ) -> pd.DataFrame:
     """
-    Generate time-series readings at *interval_minutes* resolution
-    for every sensor across the full calendar year 2023.
+    Generate time-series readings at *interval_minutes* resolution.
+    If target_date is specified, generates only for that date.
+    Otherwise generates for the full calendar year 2023.
     If rows_limit is specified, scales down the number of timestamps to fit.
 
     Returns a DataFrame with columns:
         reading_id, sensor_id, recorded_at, value, is_anomaly
     """
-    if rows_limit is not None:
+    if target_date is not None:
+        start_ts = f"{target_date} 00:00"
+        end_ts   = f"{target_date} 23:55"
+        timestamps = pd.date_range(start=start_ts, end=end_ts, freq=f"{interval_minutes}min")
+        n_timestamps = len(timestamps)
+    elif rows_limit is not None:
         n_timestamps = max(1, rows_limit // len(sensors))
         timestamps = pd.date_range(
             start="2023-01-01 00:00",
@@ -174,29 +181,47 @@ def main():
     parser.add_argument("--rows", type=int, default=None, help="Limit total row count (e.g. 50000 for CI)")
     parser.add_argument("--days", type=int, default=365, help="Number of days of data to generate (if rows not set)")
     parser.add_argument("--interval", type=int, default=INTERVAL_MINS, help="Interval in minutes (default: 5)")
+    parser.add_argument("--incremental", action="store_true", help="Generate incremental batch for a specific date")
+    parser.add_argument("--date", type=str, default="2024-01-01", help="Target date for incremental mode (YYYY-MM-DD)")
     args = parser.parse_args()
 
-    print("Generating facilities …")
-    facilities = generate_facilities(20)
-    fac_path   = os.path.join(RAW_DIR, "facilities.csv")
-    facilities.to_csv(fac_path, index=False)
-    print(f"  ✓ {len(facilities):,} rows → {fac_path}")
+    fac_path = os.path.join(RAW_DIR, "facilities.csv")
+    sen_path = os.path.join(RAW_DIR, "sensors.csv")
 
-    print("Generating sensors …")
-    sensors   = generate_sensors(facilities)
-    sen_path  = os.path.join(RAW_DIR, "sensors.csv")
-    sensors.to_csv(sen_path, index=False)
-    print(f"  ✓ {len(sensors):,} rows → {sen_path}")
+    if args.incremental:
+        if not os.path.exists(fac_path) or not os.path.exists(sen_path):
+            print("Error: Incremental mode requires existing facilities.csv and sensors.csv.")
+            sys.exit(1)
+        print("Loading existing facilities and sensors for incremental mode...")
+        facilities = pd.read_csv(fac_path)
+        sensors = pd.read_csv(sen_path)
+        
+        print(f"Generating incremental readings for {args.date} ...")
+        readings = generate_readings(sensors, facilities, interval_minutes=args.interval, target_date=args.date)
+        red_path = os.path.join(RAW_DIR, "readings_incremental.csv")
+        readings.to_csv(red_path, index=False)
+        print(f"  ✓ {len(readings):,} rows → {red_path}")
+        
+    else:
+        print("Generating facilities …")
+        facilities = generate_facilities(20)
+        facilities.to_csv(fac_path, index=False)
+        print(f"  ✓ {len(facilities):,} rows → {fac_path}")
 
-    print("Generating readings (this may take 30–60 seconds) …")
-    rows_limit = args.rows
-    if rows_limit is None and args.days != 365:
-        rows_limit = len(sensors) * args.days * (1440 // args.interval)
+        print("Generating sensors …")
+        sensors = generate_sensors(facilities)
+        sensors.to_csv(sen_path, index=False)
+        print(f"  ✓ {len(sensors):,} rows → {sen_path}")
 
-    readings  = generate_readings(sensors, facilities, interval_minutes=args.interval, rows_limit=rows_limit)
-    red_path  = os.path.join(RAW_DIR, "readings.csv")
-    readings.to_csv(red_path, index=False)
-    print(f"  ✓ {len(readings):,} rows → {red_path}")
+        print("Generating readings (this may take 30–60 seconds) …")
+        rows_limit = args.rows
+        if rows_limit is None and args.days != 365:
+            rows_limit = len(sensors) * args.days * (1440 // args.interval)
+
+        readings = generate_readings(sensors, facilities, interval_minutes=args.interval, rows_limit=rows_limit)
+        red_path = os.path.join(RAW_DIR, "readings.csv")
+        readings.to_csv(red_path, index=False)
+        print(f"  ✓ {len(readings):,} rows → {red_path}")
 
     actual_anomaly_pct = readings["is_anomaly"].mean() * 100
     print(f"\nSummary")
@@ -205,7 +230,7 @@ def main():
     print(f"  Readings   : {len(readings):>10,}")
     print(f"  Anomaly %  : {actual_anomaly_pct:.2f}%  (target ~2.00%)")
 
-
 if __name__ == "__main__":
+    import sys
     main()
 

@@ -232,6 +232,20 @@ Expect 3–8 minutes for the full readings table.
 finishes, so `02_data_quality_checks.sql` is always executed immediately
 after a load. The process exits with code `1` if any check fails.
 
+### 5a — Incremental Ingestion (Idempotency Proof)
+
+To demonstrate that the pipeline is safe for daily incremental loads and protects against duplicate data replays via high-watermarks and `ON CONFLICT` constraints, run:
+
+```bash
+# Generate one new day of data for Jan 1, 2024
+python src/generate_data.py --incremental --date 2024-01-01
+
+# Ingest the incremental batch
+python src/ingest.py --incremental
+```
+
+If you run the ingest script a second time on the same incremental batch, it will insert 0 new rows (idempotency proof).
+
 ### 6 — Run data quality checks (standalone)
 
 The quality checks also run independently at any time:
@@ -247,7 +261,8 @@ any check detects a problem, making it usable as a CI gate.
 ### 7 — Run pytest assertions
 
 ```bash
-pytest tests/test_data_quality.py -v
+pytest tests/ -v
+
 ```
 
 All five assertions should pass:

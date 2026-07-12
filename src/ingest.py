@@ -89,7 +89,7 @@ def ingest_sensors(conn: PgConnection, filepath: str) -> None:
 _INSERT_READING = """
     INSERT INTO readings (reading_id, sensor_id, recorded_at, value, is_anomaly)
     VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (reading_id) DO NOTHING
+    ON CONFLICT (reading_id, recorded_at) DO NOTHING
 """
 
 def ingest_readings(
@@ -108,6 +108,13 @@ def ingest_readings(
     chunk_num  = 0
 
     try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(recorded_at) FROM readings;")
+            watermark = cur.fetchone()[0]
+        
+        if watermark:
+            print(f"    High-watermark detected: {watermark}")
+            
         reader = pd.read_csv(
             filepath,
             chunksize=chunk_size,
@@ -115,6 +122,16 @@ def ingest_readings(
         )
         for chunk in reader:
             chunk_num += 1
+            
+            if watermark:
+                # Filter out rows older than or equal to the watermark to prevent replaying old data
+                # Ensure both are UTC-aware to avoid TypeError
+                watermark_pd = pd.to_datetime(watermark, utc=True)
+                chunk_ts = pd.to_datetime(chunk["recorded_at"], utc=True)
+                chunk = chunk[chunk_ts > watermark_pd]
+                
+            if chunk.empty:
+                continue
             rows = [
                 (
                     int(r.reading_id),
@@ -147,6 +164,11 @@ def ingest_readings(
 
 def main():
     import sys
+    import argparse
+    parser = argparse.ArgumentParser(description="Ingest CSV data into PostgreSQL.")
+    parser.add_argument("--incremental", action="store_true", help="Ingest incremental readings instead of full load")
+    args = parser.parse_args()
+
     sys.path.insert(0, os.path.dirname(__file__))
     from db_connection import get_connection
     from run_quality_checks import run_quality_checks
@@ -157,14 +179,18 @@ def main():
     conn = get_connection()
     print("  ✓ Connected\n")
 
-    print("Ingesting facilities …")
-    ingest_facilities(conn, os.path.join(raw_dir, "facilities.csv"))
+    if not args.incremental:
+        print("Ingesting facilities …")
+        ingest_facilities(conn, os.path.join(raw_dir, "facilities.csv"))
 
-    print("Ingesting sensors …")
-    ingest_sensors(conn, os.path.join(raw_dir, "sensors.csv"))
+        print("Ingesting sensors …")
+        ingest_sensors(conn, os.path.join(raw_dir, "sensors.csv"))
 
-    print("Ingesting readings (large file — may take several minutes) …")
-    ingest_readings(conn, os.path.join(raw_dir, "readings.csv"))
+        print("Ingesting readings (large file — may take several minutes) …")
+        ingest_readings(conn, os.path.join(raw_dir, "readings.csv"))
+    else:
+        print("Ingesting incremental readings …")
+        ingest_readings(conn, os.path.join(raw_dir, "readings_incremental.csv"))
 
     # ── Post-ingestion quality gate ──────────────────────────────
     # Runs 02_data_quality_checks.sql immediately after loading so

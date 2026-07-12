@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS readings_2023_11 PARTITION OF readings_partitioned
     FOR VALUES FROM ('2023-11-01 00:00:00+00') TO ('2023-12-01 00:00:00+00');
 CREATE TABLE IF NOT EXISTS readings_2023_12 PARTITION OF readings_partitioned
     FOR VALUES FROM ('2023-12-01 00:00:00+00') TO ('2024-01-01 00:00:00+00');
+CREATE TABLE IF NOT EXISTS readings_2024_01 PARTITION OF readings_partitioned
+    FOR VALUES FROM ('2024-01-01 00:00:00+00') TO ('2024-02-01 00:00:00+00');
 
 -- Recreate the composite index on the parent table
 CREATE INDEX IF NOT EXISTS idx_readings_part_sensor_time ON readings_partitioned(sensor_id, recorded_at);
