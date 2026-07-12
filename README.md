@@ -43,6 +43,49 @@ analysis → automated CSV reporting → FastAPI JSON endpoint.
 
 ---
 
+## Entity-Relationship Diagram (ERD)
+
+The database schema consists of three normalized core tables (`facilities`, `sensors`, `readings`) linked via foreign keys (`1:N` cardinality), alongside a standalone national-grid data table (`grid_data`). Note that `grid_data` is not FK-linked to `facilities` or `sensors` because it stores country-level macro measurements from Fingrid rather than individual facility sensor readings.
+
+```mermaid
+erDiagram
+    facilities ||--o{ sensors : "1:N"
+    sensors ||--o{ readings : "1:N"
+
+    facilities {
+        SERIAL facility_id PK
+        VARCHAR(100) facility_name
+        VARCHAR(50) facility_type
+        VARCHAR(50) country
+        NUMERIC(8_2) capacity_mw
+        SMALLINT commissioned_year
+    }
+    sensors {
+        SERIAL sensor_id PK
+        INT facility_id FK
+        VARCHAR(50) sensor_type
+        VARCHAR(20) unit
+    }
+    readings {
+        BIGSERIAL reading_id PK
+        INT sensor_id FK
+        TIMESTAMPTZ recorded_at
+        NUMERIC(10_4) value
+        BOOLEAN is_anomaly
+    }
+    grid_data {
+        SERIAL id PK
+        INTEGER dataset_id
+        VARCHAR(2) country
+        TIMESTAMPTZ recorded_at
+        NUMERIC(12_4) value
+        VARCHAR(50) metric
+        VARCHAR(20) source
+    }
+```
+
+---
+
 ## Tech Stack
 
 | Layer         | Technology                          |
