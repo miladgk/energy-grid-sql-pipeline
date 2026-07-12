@@ -84,6 +84,8 @@ erDiagram
     }
 ```
 
+*(Note: `readings.value` and `readings.is_anomaly` are nullable in the live schema)*
+
 ---
 
 ## Tech Stack

@@ -33,6 +33,8 @@ scored_readings AS (
         s.mean_val,
         s.stddev_val,
         CASE
+            -- Edge case: if a sensor has near-zero variance (stddev_val = 0), all its readings
+            -- for that month get z_score = 0, intentionally skipping anomaly detection for a flatline.
             WHEN s.stddev_val > 0
             THEN ABS(r.value - s.mean_val) / s.stddev_val
             ELSE 0

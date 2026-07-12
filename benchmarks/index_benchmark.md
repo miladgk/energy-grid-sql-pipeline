@@ -2,6 +2,8 @@
 
 This document records the database query performance benchmark before and after applying the composite index `idx_readings_sensor_time` on the `readings` table.
 
+*(Note: The absolute execution timings shown below reflect a specific local run on Docker. Exact millisecond values will vary significantly by hardware and environment. The meaningful finding is the relative performance improvement (the ~60x speedup), not the absolute latency).*
+
 ## Query Under Test
 The query represents a typical time-range filter for a single sensor's telemetry:
 ```sql
