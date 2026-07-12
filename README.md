@@ -54,33 +54,33 @@ erDiagram
 
     facilities {
         SERIAL facility_id PK
-        VARCHAR(100) facility_name
-        VARCHAR(50) facility_type
-        VARCHAR(50) country
-        NUMERIC(8_2) capacity_mw
+        VARCHAR facility_name
+        VARCHAR facility_type
+        VARCHAR country
+        NUMERIC capacity_mw
         SMALLINT commissioned_year
     }
     sensors {
         SERIAL sensor_id PK
         INT facility_id FK
-        VARCHAR(50) sensor_type
-        VARCHAR(20) unit
+        VARCHAR sensor_type
+        VARCHAR unit
     }
     readings {
         BIGSERIAL reading_id PK
         INT sensor_id FK
         TIMESTAMPTZ recorded_at
-        NUMERIC(10_4) value
+        NUMERIC value
         BOOLEAN is_anomaly
     }
     grid_data {
         SERIAL id PK
         INTEGER dataset_id
-        VARCHAR(2) country
+        VARCHAR country
         TIMESTAMPTZ recorded_at
-        NUMERIC(12_4) value
-        VARCHAR(50) metric
-        VARCHAR(20) source
+        NUMERIC value
+        VARCHAR metric
+        VARCHAR source
     }
 ```
 
@@ -305,7 +305,7 @@ python scripts/setup_metabase.py
 | **`FILTER` aggregation** | `02_data_quality_checks.sql`, `06_monthly_report.sql` — conditional counts without subqueries |
 | **`NULLIF` for safe division** | `05_facility_ranking.sql`, `06_monthly_report.sql` — prevents division-by-zero |
 | **`DATE_TRUNC` + `TO_CHAR`** | All analysis files — period aggregation and formatted output |
-| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 13.4ms to 0.36ms (97.3% reduction). See [index_benchmark.md](file:///mnt/d/Projects/sql_docker/energy-analytics-sql/benchmarks/index_benchmark.md) for execution plans. |
+| **Composite indexes** | Schema — `(sensor_id, recorded_at)` index cuts query execution time from 13.4ms to 0.36ms (97.3% reduction). See [index_benchmark.md](benchmarks/index_benchmark.md) for execution plans. |
 | **`ON CONFLICT DO NOTHING`** | `ingest.py` — idempotent ingestion; safe to re-run the pipeline |
 | **LATERAL joins** | `09_top_readings_per_sensor.sql` — per-sensor top-N without a window function subquery |
 
@@ -365,35 +365,16 @@ To make the SQL analytics accessible and actionable for executive decision-maker
 ```
 
 ### Full Dashboard Overview
-![Metabase Executive Dashboard](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/metabase_dashboard.png)
+![Metabase Executive Dashboard](docs/screenshots/metabase_dashboard.png)
 
 ### 1. Top 10 Facilities by Efficiency
-![Top 10 Facilities by Efficiency](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/facility_ranking.png)
+![Top 10 Facilities by Efficiency](docs/screenshots/facility_ranking.png)
 
 ### 2. Monthly Anomaly Rate Trend
-![Monthly Anomaly Rate Trend](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/monthly_anomaly_rate.png)
+![Monthly Anomaly Rate Trend](docs/screenshots/monthly_anomaly_rate.png)
 
 ### 3. Rolling 24h Average Power by Facility Type
-![Rolling 24h Average Power by Facility Type](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/rolling_24h_average.png)
+![Rolling 24h Average Power by Facility Type](docs/screenshots/rolling_24h_average.png)
 
 ### 4. Real vs. Synthetic Wind Pattern Comparison
-![Real vs. Synthetic Wind Pattern Comparison](/mnt/d/Projects/sql_docker/energy-analytics-sql/docs/screenshots/real_vs_synthetic_comparison.png)
-
----
-
-## Recommended Commit Sequence
-
-```
-git commit -m "Add project structure and environment config"
-git commit -m "Add synthetic data generator for facilities, sensors, readings"
-git commit -m "Add PostgreSQL schema with indexes"
-git commit -m "Add Python ingestion pipeline with chunked loading and error handling"
-git commit -m "Add data quality SQL checks and pytest validation tests"
-git commit -m "Add rolling average analysis with 24h window function"
-git commit -m "Add z-score anomaly detection using CTEs and monthly stats"
-git commit -m "Add facility efficiency ranking with RANK, NTILE, PERCENT_RANK"
-git commit -m "Add monthly report with MoM comparison and anomaly severity"
-git commit -m "Add run_report.py pipeline, FastAPI endpoint, and complete README"
-```
-
----
+![Real vs. Synthetic Wind Pattern Comparison](docs/screenshots/real_vs_synthetic_comparison.png)
