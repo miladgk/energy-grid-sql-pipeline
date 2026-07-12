@@ -37,7 +37,7 @@ def main():
     new_count = cur.fetchone()[0]
     print(f"New count: {new_count:,}")
 
-    if old_count == new_count and old_count > 0:
+    if old_count == new_count:
         print("Row counts match! Proceeding with table swap.")
         # Swap tables
         cur.execute("ALTER TABLE readings RENAME TO readings_old;")

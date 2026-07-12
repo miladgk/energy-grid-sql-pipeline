@@ -63,13 +63,13 @@ jobs:
         run: |
           python src/generate_data.py --rows ${ROWS_EXPECTED}
 
-      - name: Ingest Data into PostgreSQL
-        run: |
-          python src/ingest.py
-
       - name: Partition Readings Table
         run: |
           python src/migrate_to_partitioned.py
+
+      - name: Ingest Data into PostgreSQL
+        run: |
+          python src/ingest.py
 
       - name: Run Data Quality Checks
         run: |
