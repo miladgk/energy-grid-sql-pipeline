@@ -69,7 +69,7 @@ erDiagram
     readings {
         BIGSERIAL reading_id PK
         INT sensor_id FK
-        TIMESTAMPTZ recorded_at
+        TIMESTAMPTZ recorded_at PK
         NUMERIC value
         BOOLEAN is_anomaly
     }
@@ -105,7 +105,9 @@ erDiagram
 ```
 energy-analytics-sql/
 │
-├── docker-compose.yml          # PostgreSQL 15 containerised — one command setup
+├── benchmarks/
+│   └── index_benchmark.md      # Composite index & range partitioning EXPLAIN ANALYZE proof
+├── docker-compose.yml          # PostgreSQL 15 & Metabase containers — one command setup
 ├── environment.yaml            # Conda environment
 ├── config_template.yaml        # DB credentials template (config.yaml is git-ignored)
 ├── .gitignore
@@ -117,7 +119,8 @@ energy-analytics-sql/
 │
 ├── sql/
 │   ├── schema/
-│   │   └── 01_create_tables.sql
+│   │   ├── 01_create_tables.sql
+│   │   └── 10_partition_readings.sql # Declarative range partitioning (monthly)
 │   ├── etl/
 │   │   └── 02_data_quality_checks.sql
 │   └── analysis/
@@ -125,19 +128,24 @@ energy-analytics-sql/
 │       ├── 04_anomaly_detection.sql
 │       ├── 05_facility_ranking.sql
 │       ├── 06_monthly_report.sql
-│       └── 08_real_vs_synthetic_comparison.sql
+│       ├── 08_real_vs_synthetic_comparison.sql
+│       └── 09_top_readings_per_sensor.sql # Correlated LATERAL join queries
 │
 ├── src/
 │   ├── setup_db.py             # Runs 01_create_tables.sql (fallback for non-Docker setups)
-│   ├── generate_data.py        # Synthetic data generator
+│   ├── generate_data.py        # Synthetic & incremental data generator
 │   ├── db_connection.py        # Credential-safe psycopg2 factory
-│   ├── ingest.py               # Chunked CSV → PostgreSQL pipeline
+│   ├── ingest.py               # Chunked & incremental CSV → PostgreSQL pipeline
+│   ├── migrate_to_partitioned.py # Live table migration to range-partitioned schema
+│   ├── fetch_grid_data.py      # Real Fingrid API ingestion client
+│   ├── ingest_grid_data.py     # Grid data PostgreSQL loader
 │   ├── run_quality_checks.py   # Runs 02_data_quality_checks.sql, prints results
 │   ├── run_report.py           # Runs all analysis SQL → timestamped CSVs
 │   └── api.py                  # FastAPI service (anomalies, rankings)
 │
 ├── tests/
-│   └── test_data_quality.py    # pytest suite for post-ingestion assertions
+│   ├── test_data_quality.py    # pytest suite for post-ingestion assertions
+│   └── test_incremental.py     # Two-layer idempotency verification tests
 │
 └── outputs/                    # Auto-generated report CSVs land here
 ```
@@ -274,13 +282,14 @@ pytest tests/ -v
 
 ```
 
-All five assertions should pass:
+All six assertions should pass across both test suites (`test_data_quality.py` and `test_incremental.py`):
 
 - No sensors without readings
 - Zero NULL values
 - Anomaly rate in [1 %, 4 %]
-- 365 days of coverage
+- 365+ days of coverage
 - Row count within 5 % of 6,307,200
+- Strict idempotency on duplicate batch loads (Watermark & ON CONFLICT)
 
 ### 8 — Run the analysis report
 
