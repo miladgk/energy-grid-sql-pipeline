@@ -232,19 +232,28 @@ Expect 3–8 minutes for the full readings table.
 finishes, so `02_data_quality_checks.sql` is always executed immediately
 after a load. The process exits with code `1` if any check fails.
 
-### 5a — Incremental Ingestion (Idempotency Proof)
+### 5a — Incremental Ingestion & Idempotency Verification
 
-To demonstrate that the pipeline is safe for daily incremental loads and protects against duplicate data replays via high-watermarks and `ON CONFLICT` constraints, run:
+The pipeline employs a **two-layered defense** against duplicate data insertion:
+
+1. **Application-Level High-Watermark Filter (`--incremental` mode):**
+   Before loading CSV chunks, `ingest.py` queries `SELECT MAX(recorded_at) FROM readings;` and preemptively filters out incoming rows where `recorded_at <= watermark`. This saves database CPU, I/O, and transaction log overhead when re-running against historical files.
+2. **Database-Level Constraint Deduplication (`ON CONFLICT`):**
+   If duplicate rows arrive within a new batch (or if the application watermark is bypassed via `--no-watermark`), PostgreSQL's composite primary key `(reading_id, recorded_at)` catches the collision and `ON CONFLICT DO NOTHING` silently drops the duplicate records without aborting the transaction.
 
 ```bash
 # Generate one new day of data for Jan 1, 2024
 python src/generate_data.py --incremental --date 2024-01-01
 
-# Ingest the incremental batch
+# 1. First run: Ingests the 17,280 incremental rows normally
 python src/ingest.py --incremental
-```
 
-If you run the ingest script a second time on the same incremental batch, it will insert 0 new rows (idempotency proof).
+# 2. Second run: Inserts 0 rows because the Application High-Watermark filter catches them
+python src/ingest.py --incremental
+
+# 3. Third run: Bypasses the watermark to prove Database-level ON CONFLICT DO NOTHING rejects duplicates
+python src/ingest.py --incremental --no-watermark
+```
 
 ### 6 — Run data quality checks (standalone)
 
