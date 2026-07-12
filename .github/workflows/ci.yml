@@ -67,6 +67,10 @@ jobs:
         run: |
           python src/ingest.py
 
+      - name: Partition Readings Table
+        run: |
+          python src/migrate_to_partitioned.py
+
       - name: Run Data Quality Checks
         run: |
           python src/run_quality_checks.py

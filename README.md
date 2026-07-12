@@ -318,6 +318,8 @@ docker compose up -d metabase
 
 Once running (`http://localhost:3000`), provision the database connection and native SQL charts automatically via the REST API:
 
+*(Note: The Metabase provisioning and screenshot scripts require additional dependencies. Install them first with `pip install -r requirements-dev.txt`)*
+
 ```bash
 python scripts/setup_metabase.py
 ```
@@ -376,7 +378,7 @@ reading_id  sensor_id  recorded_at               value      z_score  facility_na
 
 ## Real vs. Synthetic Wind Pattern Validation
 
-To validate the synthetic data generator against reality, monthly wind production patterns were compared against real Fingrid grid data for Finland (2023). The result: a Pearson correlation of **-0.42** between real and synthetic monthly capacity factors. Real Nordic wind production shows strong seasonality (100% in January, dropping to 33% in July), while the synthetic generator produces a nearly flat ~99% capacity factor year-round. This confirms the synthetic generator does not model seasonal wind variability — a known limitation, surfaced deliberately by this comparison rather than left unexamined. See `outputs/08_real_vs_synthetic_comparison.csv` for the full monthly breakdown.
+To validate the synthetic data generator against reality, daily average wind production patterns were compared against real Fingrid grid data for Finland (2023) using z-score standardization. The analysis yielded a Pearson correlation coefficient of **-0.0614** over a sample size of **n = 365** days (degrees of freedom **df = 363**). With a p-value of **0.242**, this correlation is **not statistically significant** at the conventional α = 0.05 threshold. This result shows no statistically detectable relationship between the synthetic and real wind patterns — consistent with the synthetic generator's known lack of seasonal modeling, since it produces a nearly flat capacity factor year-round while real Nordic wind production varies strongly by season. Surfacing this result, rather than reporting only the earlier (statistically underpowered) monthly comparison, demonstrates how real-world API data can be used to rigorously audit simulation assumptions. See `outputs/08_real_vs_synthetic_comparison.csv` for the full daily breakdown.
 
 ---
 

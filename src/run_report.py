@@ -64,6 +64,21 @@ def main():
 
         print(f"  ✓ {short_name}: {len(df):,} rows → outputs/{out_filename}")
 
+        if query_name == "08_real_vs_synthetic_comparison":
+            try:
+                from scipy import stats
+                r, pval = stats.pearsonr(df['real_avg'], df['synthetic_avg'])
+                dof = len(df) - 2
+                print(f"    └─ Daily Correlation Significance Test:")
+                print(f"       • Sample size (n)        : {len(df)}")
+                print(f"       • Degrees of Freedom (df): {dof}")
+                print(f"       • Pearson r              : {r:.4f}")
+                print(f"       • p-value                : {pval:.4e} (Alpha = 0.05)")
+                sig = "Statistically Significant" if pval < 0.05 else "Not Statistically Significant"
+                print(f"       • Conclusion             : {sig}")
+            except Exception as e:
+                print(f"    └─ Error running significance test: {e}")
+
     conn.close()
     print("=" * 60)
     print("Report complete.")

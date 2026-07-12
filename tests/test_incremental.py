@@ -40,10 +40,10 @@ def test_incremental_idempotency(db_conn):
         initial_total_count = cur.fetchone()[0]
 
     # 1. Generate incremental data
-    subprocess.run(["conda", "run", "-n", "energy-analytics", "python", gen_script, "--incremental", "--date", target_date], check=True)
+    subprocess.run([sys.executable, gen_script, "--incremental", "--date", target_date], check=True)
 
     # 2. Run first ingest
-    subprocess.run(["conda", "run", "-n", "energy-analytics", "python", ingest_script, "--incremental"], check=True)
+    subprocess.run([sys.executable, ingest_script, "--incremental"], check=True)
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM readings;")
@@ -53,7 +53,7 @@ def test_incremental_idempotency(db_conn):
     assert added_rows > 0, "First ingest should have added rows"
 
     # 3. Run second ingest (should be filtered by application-level high-watermark)
-    subprocess.run(["conda", "run", "-n", "energy-analytics", "python", ingest_script, "--incremental"], check=True)
+    subprocess.run([sys.executable, ingest_script, "--incremental"], check=True)
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM readings;")
@@ -62,7 +62,7 @@ def test_incremental_idempotency(db_conn):
     assert count_after_second == count_after_first, "Second ingest should not add rows (Application high-watermark filter)"
 
     # 4. Run third ingest WITH --no-watermark to explicitly test database-level ON CONFLICT DO NOTHING
-    subprocess.run(["conda", "run", "-n", "energy-analytics", "python", ingest_script, "--incremental", "--no-watermark"], check=True)
+    subprocess.run([sys.executable, ingest_script, "--incremental", "--no-watermark"], check=True)
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM readings;")
